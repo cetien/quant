@@ -1,0 +1,16 @@
+
+다음 실행 순서
+bash
+
+# 1. 가상환경 + 패키지
+cd D:\Trabajo\ai\quant
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+# 2. UI 실행
+streamlit run ui/app.py
+
+→ [데이터 관리] 탭에서: 스키마 초기화 → 매크로 수집 → 종목 마스터 → 삼성전자(005930) 테스트 수집 순서로 진행하면 됩니다.
+
+

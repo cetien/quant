@@ -17,7 +17,8 @@ ENV/
 htmlcov/
 
 .idea/
-.vscode/
+.vscode/*
+!.vscode/tasks.json
 *.swp
 *.swo
 
@@ -27,3 +28,10 @@ build/
 
 .DS_Store
 Thumbs.db
+
+.venv312/
+logs/
+data/database/
+data/raw/
+*.duckdb
+*.log
