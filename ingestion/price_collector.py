@@ -2,7 +2,7 @@
 ingestion/price_collector.py
 일봉 OHLCV 수집: pykrx (KR 국내) + yfinance (글로벌 보완)
 - 거래대금(amount): pykrx 제공 / yfinance 미제공
-- 증분 업데이트: last_date 이후 구간만 수집
+- 증분 업데이트: ticker별 last_date 이후 구간만 수집
 - Rate Limit 대응: tenacity 기반 exponential backoff
 """
 from datetime import date, timedelta
@@ -74,19 +74,21 @@ class PriceCollector:
                     name = stock.get_market_ticker_name(t)
                     rows.append({"ticker": t, "name": name, "market": market})
             df = pd.DataFrame(rows)
+            # sector 컬럼 없음: stock_sector_map 테이블로 분리 관리
             log.info(f"종목 목록 수집: {len(df)}개")
             return df
         except Exception as e:
             log.error(f"fetch_stock_list 실패: {e}")
             return pd.DataFrame(columns=["ticker", "name", "market"])
 
-    def update_stock_master(self) -> None:
+    def update_stock_master(self) -> int:
         """stocks 테이블 최신 상태 동기화."""
         df = self.fetch_stock_list()
         if df.empty:
-            return
+            return 0
         self.db.upsert_dataframe(df, "stocks", pk_cols=["ticker"])
         log.info("stocks 테이블 업데이트 완료.")
+        return len(df)
 
     # ── 일봉 수집 (pykrx) ────────────────────────────────────────────────────
 
@@ -108,14 +110,44 @@ class PriceCollector:
                 return pd.DataFrame()
 
             raw = raw.reset_index()
-            raw.columns = ["date", "open", "high", "low", "close", "volume", "amount", "changes"]
+            # pykrx 반환 컬럼 수에 따라 대응 (거래대금 'amount' 포함 여부 체크)
+            if len(raw.columns) == 8:
+                raw.columns = ["date", "open", "high", "low", "close", "volume", "amount", "changes"]
+            elif len(raw.columns) == 7:
+                # 거래대금이 빠진 경우: [date, open, high, low, close, volume, changes]
+                raw.columns = ["date", "open", "high", "low", "close", "volume", "changes"]
+                raw["amount"] = 0  # 부족한 컬럼은 0으로 채워 데이터 구조 유지
+
             raw["ticker"] = ticker
             raw["adj_close"] = raw["close"]  # pykrx 수정주가: 별도 API 필요
             raw["date"] = pd.to_datetime(raw["date"])
+
+            # DB CHECK 제약 조건(open > 0, close > 0) 준수를 위해 0인 데이터 필터링
+            # 거래 정지 종목 등 가격이 0으로 들어오는 경우를 제외합니다.
+            raw = raw[(raw["open"] > 0) & (raw["close"] > 0)].copy()
+
             return raw[["ticker", "date", "open", "high", "low", "close", "adj_close", "volume", "amount"]]
         except Exception as e:
             log.error(f"pykrx 수집 실패 [{ticker}]: {e}")
             return pd.DataFrame()
+
+    # ── ticker별 last_date 사전 로드 ──────────────────────────────────────────
+
+    def _load_ticker_last_dates(self) -> dict:
+        """
+        daily_prices 테이블에서 ticker별 최신 날짜를 1회 쿼리로 로드.
+        반환: {ticker: "YYYY-MM-DD"} — 수집 이력 없는 종목은 포함되지 않음.
+        """
+        try:
+            df = self.db.query(
+                "SELECT ticker, MAX(date)::VARCHAR AS last_date FROM daily_prices GROUP BY ticker"
+            )
+            if df.empty:
+                return {}
+            return dict(zip(df["ticker"], df["last_date"]))
+        except Exception as e:
+            log.warning(f"_load_ticker_last_dates 실패 (전체 신규 수집으로 진행): {e}")
+            return {}
 
     # ── 증분 업데이트 ─────────────────────────────────────────────────────────
 
@@ -123,44 +155,61 @@ class PriceCollector:
         self,
         tickers: Optional[List[str]] = None,
         end: Optional[str] = None,
-    ) -> None:
+    ) -> int:
         """
         전체 종목(또는 지정 종목) 일봉 증분 업데이트.
-        last_date 이후 구간만 수집 → DB + Parquet 모두 적재.
+        ticker별 last_date 이후 구간만 수집 → DB + Parquet 모두 적재.
+
+        수정 이력:
+        - v1: 전체 테이블 MAX(date) 1회 조회 → 1번째 종목 수집 후 나머지 종목 skip 버그
+        - v2: ticker별 MAX(date) 사전 로드 → 종목별 독립적 증분 구간 계산
         """
         if tickers is None:
             df_stocks = self.db.query("SELECT ticker FROM stocks WHERE is_active = TRUE")
             tickers = df_stocks["ticker"].tolist()
 
         end = end or date.today().strftime("%Y-%m-%d")
-        last_date = self.db.get_last_date("daily_prices")
-        start = (
-            (pd.Timestamp(last_date) + timedelta(days=1)).strftime("%Y-%m-%d")
-            if last_date else cfg.ingestion.default_start_date
-        )
 
-        if start > end:
-            log.info("이미 최신 상태. 수집 불필요.")
-            return
+        # ★ 핵심 수정: ticker별 last_date를 1회 쿼리로 사전 로드
+        ticker_last_dates = self._load_ticker_last_dates()
 
-        log.info(f"일봉 증분 수집: {len(tickers)}개 종목, {start} ~ {end}")
+        log.info(f"일봉 증분 수집 시작: {len(tickers)}개 종목, end={end}")
         all_rows = []
+        skipped = 0
 
         for i, ticker in enumerate(tickers):
+            # ★ 종목별 독립적 start 계산
+            last_date = ticker_last_dates.get(ticker)
+            if last_date:
+                start = (
+                    pd.Timestamp(last_date) + timedelta(days=1)
+                ).strftime("%Y-%m-%d")
+            else:
+                start = cfg.ingestion.default_start_date
+
+            # ★ early skip은 전체 함수가 아닌 해당 종목만
+            if start > end:
+                log.debug(f"[{ticker}] 이미 최신 ({last_date}). skip.")
+                skipped += 1
+                continue
+
             df = self.fetch_daily_ohlcv_pykrx(ticker, start, end)
             if not df.empty:
                 all_rows.append(df)
+                log.debug(f"[{ticker}] {len(df)}행 수집 ({start} ~ {end})")
 
             # Rate Limit 방지
             time.sleep(cfg.ingestion.pykrx_delay_sec)
 
             if (i + 1) % 100 == 0:
-                log.info(f"  진행: {i+1}/{len(tickers)}")
+                log.info(f"  진행: {i+1}/{len(tickers)} (수집중={len(all_rows)}건 누적, skip={skipped})")
 
         if all_rows:
             combined = pd.concat(all_rows, ignore_index=True)
             self.db.upsert_dataframe(combined, "daily_prices", pk_cols=["ticker", "date"])
             save_prices(combined, category="prices")
-            log.info(f"일봉 수집 완료: {len(combined)}행")
+            log.info(f"일봉 수집 완료: {len(combined)}행 적재, {skipped}종목 skip")
+            return len(combined)
         else:
-            log.warning("수집된 데이터 없음.")
+            log.info(f"수집된 데이터 없음. {skipped}종목 모두 최신 상태.")
+            return 0

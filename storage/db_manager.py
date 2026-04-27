@@ -181,3 +181,60 @@ class DuckDBManager:
             return self.con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         except Exception:
             return 0
+
+    # ── 섹터 / 테마 편의 메서드 ───────────────────────────────────────────────
+
+    def get_sector_map(self) -> pd.Series:
+        """
+        종목 → 대표 섹터명 매핑 Series 반환 (weight 최대 섹터 기준).
+        scorer.py / selector.py의 sector_map 인자로 직접 사용 가능.
+
+        Returns: pd.Series  index=ticker, values=sector(TEXT)
+        """
+        df = self.query("SELECT ticker, sector FROM v_stock_primary_sector")
+        if df.empty:
+            return pd.Series(dtype=str)
+        return df.set_index("ticker")["sector"]
+
+    def upsert_theme(self, name: str, description: str = "", is_active: bool = True) -> int:
+        """
+        테마 삽입 또는 업데이트 (name 기준 UPSERT).
+        updated_at 갱신은 애플리케이션 레이어에서 처리 (DuckDB 트리거 미지원).
+
+        Returns: int theme_id
+        """
+        existing = self.con.execute(
+            "SELECT theme_id FROM themes WHERE name = ?", [name]
+        ).fetchone()
+        if existing:
+            theme_id = existing[0]
+            self.con.execute(
+                """UPDATE themes
+                   SET description = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE theme_id = ?""",
+                [description, is_active, theme_id],
+            )
+        else:
+            max_id = self.con.execute(
+                "SELECT COALESCE(MAX(theme_id), 0) FROM themes"
+            ).fetchone()[0]
+            theme_id = max_id + 1
+            self.con.execute(
+                "INSERT INTO themes (theme_id, name, description, is_active) VALUES (?, ?, ?, ?)",
+                [theme_id, name, description, is_active],
+            )
+        self.logger.info(f"upsert_theme: theme_id={theme_id}, name='{name}'")
+        return theme_id
+
+    def deactivate_theme_mapping(self, ticker: str, theme_id: int) -> None:
+        """
+        종목-테마 매핑 비활성화 (valid_to = CURRENT_DATE).
+        PK에 valid_from 포함이므로 valid_to IS NULL 조건으로 현재 유효 레코드만 대상.
+        """
+        self.con.execute(
+            """UPDATE stock_theme_map
+               SET valid_to = CURRENT_DATE
+               WHERE ticker = ? AND theme_id = ? AND valid_to IS NULL""",
+            [ticker, theme_id],
+        )
+        self.logger.info(f"deactivate_theme_mapping: ticker={ticker}, theme_id={theme_id}")
