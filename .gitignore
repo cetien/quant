@@ -34,4 +34,5 @@ logs/
 data/database/
 data/raw/
 *.duckdb
+data/pdf/
 *.log
