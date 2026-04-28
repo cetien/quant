@@ -44,6 +44,11 @@ class DuckDBManager:
     # ── 연결 관리 ─────────────────────────────────────────────────────────────
 
     def close(self) -> None:
+        try:
+            # WAL 파일을 메인 DB에 강제로 병합하여 종료 시 안정성 확보
+            self.con.execute("CHECKPOINT;")
+        except Exception:
+            pass
         self.con.close()
         self.logger.info("DuckDB connection closed.")
 
@@ -381,3 +386,63 @@ class DuckDBManager:
         count = self.con.execute("SELECT COUNT(*) FROM stock_cache").fetchone()[0]
         self.logger.info(f"refresh_stock_cache 완료: {count}행")
         return count
+
+    # ── stock_history ─────────────────────────────────────────────────────────
+
+    _HISTORY_MAX = 50   # pin 포함 총 보관 수
+
+    def upsert_history(self, ticker: str, name: str, kind: str = "stock") -> None:
+        """
+        조회 히스토리 upsert.
+        - 기존 행: viewed_at 갱신, is_pinned 유지
+        - 신규 행: INSERT
+        - 전체 행 수(pin 포함)가 MAX 초과 시 오래된 un-pinned 행 삭제
+        """
+        self.con.execute("""
+            INSERT INTO stock_history (ticker, kind, name, viewed_at, is_pinned)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, FALSE)
+            ON CONFLICT (ticker, kind) DO UPDATE
+                SET viewed_at = excluded.viewed_at,
+                    name      = excluded.name
+        """, [ticker, kind, name])
+
+        # MAX 초과 시 오래된 un-pinned 제거
+        total = self.con.execute(
+            "SELECT COUNT(*) FROM stock_history"
+        ).fetchone()[0]
+        if total > self._HISTORY_MAX:
+            overflow = total - self._HISTORY_MAX
+            self.con.execute("""
+                DELETE FROM stock_history
+                WHERE (ticker, kind) IN (
+                    SELECT ticker, kind FROM stock_history
+                    WHERE is_pinned = FALSE
+                    ORDER BY viewed_at ASC
+                    LIMIT ?
+                )
+            """, [overflow])
+
+    def get_history(self) -> pd.DataFrame:
+        """
+        히스토리 목록 반환.
+        정렬: pinned 우선 → viewed_at DESC
+        컬럼: ticker, kind, name, viewed_at, is_pinned
+        """
+        return self.con.execute("""
+            SELECT ticker, kind, name, viewed_at, is_pinned
+            FROM stock_history
+            ORDER BY is_pinned DESC, viewed_at DESC
+        """).df()
+
+    def set_history_pin(self, ticker: str, kind: str, is_pinned: bool) -> None:
+        """pin 상태 토글."""
+        self.con.execute(
+            "UPDATE stock_history SET is_pinned = ? WHERE ticker = ? AND kind = ?",
+            [is_pinned, ticker, kind],
+        )
+
+    def delete_unpinned_history(self) -> int:
+        """un-pinned 항목 전체 삭제. 삭제 행 수 반환."""
+        before = self.con.execute("SELECT COUNT(*) FROM stock_history WHERE is_pinned = FALSE").fetchone()[0]
+        self.con.execute("DELETE FROM stock_history WHERE is_pinned = FALSE")
+        return before

@@ -204,18 +204,17 @@ def _render_group_grid(db: DuckDBManager, min_rating: int) -> Optional[dict]:
 
     gb = GridOptionsBuilder.from_dataframe(disp)
     gb.configure_default_column(
-        resizable=False, sortable=False, filter=False,
+        resizable=True, sortable=True, filter=False,
         suppressMovable=True, cellStyle={"fontSize": "12px"},
     )
-    gb.configure_column("그룹명",  width=160, minWidth=160, maxWidth=160)
-    gb.configure_column("종목수",  width=48,  minWidth=48,  maxWidth=48,
+    gb.configure_column("그룹명",  width=170, minWidth=100)
+    gb.configure_column("종목수",  width=55,  minWidth=40,
                         headerName="수")
-    gb.configure_column("Rating", width=52,  minWidth=52,  maxWidth=52,
+    gb.configure_column("Rating", width=60,  minWidth=40,
                         headerName="★")
     gb.configure_selection("single", use_checkbox=False)
     gb.configure_grid_options(
         rowStyle=_ROW_STYLE_JS,
-        domLayout="autoHeight",
         headerHeight=28,
         rowHeight=28,
         suppressHorizontalScroll=True,
@@ -234,6 +233,7 @@ def _render_group_grid(db: DuckDBManager, min_rating: int) -> Optional[dict]:
         allow_unsafe_jscode=True,
         pre_selected_rows=pre_rows,
         fit_columns_on_grid_load=False,
+        height=min(28 * len(disp) + 36, 300),   # 최대 300px, 초과 시 스크롤
         key="aggrid_group",
     )
 
@@ -294,16 +294,16 @@ def _render_macro_grid(db: DuckDBManager) -> None:
 
     gb = GridOptionsBuilder.from_dataframe(df)
     gb.configure_default_column(
-        resizable=False, sortable=False, filter=False,
+        resizable=True, sortable=True, filter=False,
         suppressMovable=True, cellStyle={"fontSize": "12px"},
     )
-    gb.configure_column("코드",   width=110, minWidth=110, maxWidth=110)
-    gb.configure_column("현재값", width=84,  minWidth=84,  maxWidth=84,
+    gb.configure_column("코드",   width=120, minWidth=80)
+    gb.configure_column("현재값", width=95,  minWidth=70,
                         valueFormatter=JsCode(
                             "function(p){ return p.value==null ? '-'"
                             " : p.value.toLocaleString(undefined,{maximumFractionDigits:2}); }"
                         ))
-    gb.configure_column("등락률", width=68,  minWidth=68,  maxWidth=68,
+    gb.configure_column("등락률", width=80,  minWidth=60,
                         cellStyle=_RATE_CELL_STYLE_JS,
                         valueFormatter=JsCode(
                             "function(p){ return p.value==null ? '-'"
@@ -312,7 +312,6 @@ def _render_macro_grid(db: DuckDBManager) -> None:
     gb.configure_selection("single", use_checkbox=False)
     gb.configure_grid_options(
         rowStyle=_ROW_STYLE_JS,
-        domLayout="autoHeight",
         headerHeight=28,
         rowHeight=26,
         suppressHorizontalScroll=True,
@@ -330,6 +329,7 @@ def _render_macro_grid(db: DuckDBManager) -> None:
         allow_unsafe_jscode=True,
         pre_selected_rows=pre_rows,
         fit_columns_on_grid_load=False,
+        height=min(26 * len(df) + 34, 400),     # 최대 400px, 초과 시 스크롤
         key="aggrid_macro",
     )
 
@@ -363,11 +363,19 @@ def _load_stocks_for_group(
     )
     rating_filter = f"AND s.rating >= {min_stock_rating}"
 
+    if gtype == "global":
+        w_col = "1.0 AS 비중"
+    elif gtype == "sector":
+        w_col = "ssm.weight AS 비중"
+    else:
+        w_col = "stm.weight AS 비중"
+
     base_select = f"""
         s.ticker        AS 티커,
         s.name          AS 종목명,
         {metric_expr}   AS 지표,
         s.rating        AS rating,
+        {w_col},
         COALESCE(sec.sector, '') AS 섹터
     """
 
@@ -428,20 +436,20 @@ def _render_stock_grid(
         return
 
     cur_ticker = state.get("selected_ticker")
-    disp = df[["종목명", "지표", "rating", "티커"]].copy()
+    disp = df[["종목명", "지표", "비중", "rating", "티커"]].copy()
 
     gb = GridOptionsBuilder.from_dataframe(disp)
     gb.configure_default_column(
-        resizable=False, sortable=False, filter=False,
+        resizable=True, sortable=True, filter=False,
         suppressMovable=True, cellStyle={"fontSize": "12px"},
     )
-    gb.configure_column("종목명", width=106, minWidth=106, maxWidth=106)
+    gb.configure_column("종목명", width=100, minWidth=70)
 
     metric_header = metric_label.replace("상승률", "%")   # 헤더 축약
     if is_rate:
         gb.configure_column(
             "지표", headerName=metric_header,
-            width=70, minWidth=70, maxWidth=70,
+            width=75, minWidth=60,
             cellStyle=_RATE_CELL_STYLE_JS,
             valueFormatter=JsCode(
                 "function(p){ return p.value==null ? '-' : p.value.toFixed(1)+'%'; }"
@@ -450,17 +458,17 @@ def _render_stock_grid(
     else:
         gb.configure_column(
             "지표", headerName=metric_header,
-            width=70, minWidth=70, maxWidth=70,
+            width=75, minWidth=60,
             valueFormatter=JsCode(
                 "function(p){ return p.value==null ? '-' : p.value; }"
             ),
         )
-    gb.configure_column("rating", headerName="★", width=40, minWidth=40, maxWidth=40)
-    gb.configure_column("티커", width=54, minWidth=54, maxWidth=54)
+    gb.configure_column("비중", headerName="W", width=50, minWidth=40)
+    gb.configure_column("rating", headerName="★", width=45, minWidth=30)
+    gb.configure_column("티커", width=65, minWidth=50)
     gb.configure_selection("single", use_checkbox=False)
     gb.configure_grid_options(
         rowStyle=_ROW_STYLE_JS,
-        domLayout="autoHeight",
         headerHeight=28,
         rowHeight=26,
         suppressHorizontalScroll=True,
@@ -479,6 +487,7 @@ def _render_stock_grid(
         allow_unsafe_jscode=True,
         pre_selected_rows=pre_rows,
         fit_columns_on_grid_load=False,
+        height=min(26 * len(disp) + 34, 400),   # 최대 400px, 초과 시 스크롤
         key="aggrid_stock",
     )
 

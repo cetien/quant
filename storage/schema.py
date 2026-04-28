@@ -234,6 +234,20 @@ CREATE TABLE IF NOT EXISTS stock_cache (
 );
 """
 
+# ── 조회 히스토리 ────────────────────────────────────────────────────────────
+
+CREATE_STOCK_HISTORY = """
+CREATE TABLE IF NOT EXISTS stock_history (
+    ticker      TEXT      NOT NULL,          -- stocks FK (매크로는 indicator_code)
+    kind        TEXT      NOT NULL DEFAULT 'stock'
+                          CHECK (kind IN ('stock', 'macro')),
+    name        TEXT      NOT NULL,          -- 표시명 캐시 (stocks.name / indicator_code)
+    viewed_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_pinned   BOOLEAN   NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (ticker, kind)               -- 종목+매크로 각각 1행
+);
+"""
+
 # ── PDF 리포트 테이블 ────────────────────────────────────────────────────────
 
 CREATE_PDF_REPORTS = """
@@ -271,6 +285,8 @@ ALL_SCHEMAS = [
     CREATE_TRADING_CALENDAR,
     # 캐시 (stocks + daily_prices 이후)
     CREATE_STOCK_CACHE,
+    # 히스토리
+    CREATE_STOCK_HISTORY,
     # 뷰 (모든 테이블 이후)
     CREATE_VIEW_ACTIVE_THEME,
     CREATE_VIEW_STOCK_PRIMARY_SECTOR,

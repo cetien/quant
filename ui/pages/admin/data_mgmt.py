@@ -4,6 +4,7 @@ from storage.db_manager import DuckDBManager
 from ingestion.price_collector import PriceCollector
 from ingestion.supply_collector import SupplyCollector
 from ingestion.macro_collector import MacroCollector
+from ui.components.stock_selector import stock_selector
 
 
 def render(db: DuckDBManager) -> None:
@@ -59,9 +60,11 @@ def render(db: DuckDBManager) -> None:
 
     with c3:
         st.caption("③ 일봉 가격")
-        test_t = st.text_input("티커 (빈칸=전체)", placeholder="005930", key="dm_price_t")
+        price_ticker = stock_selector(db, key="dm_price", label="종목 검색 (빈칸=전체)")
+        if price_ticker:
+            st.caption(f"선택: `{price_ticker}`")
         if st.button("일봉 증분 업데이트", use_container_width=True):
-            tickers = [test_t.strip()] if test_t.strip() else None
+            tickers = [price_ticker] if price_ticker else None
             try:
                 with st.spinner("수집 중..."):
                     count = PriceCollector(db).incremental_update_daily_prices(tickers=tickers)
@@ -74,9 +77,11 @@ def render(db: DuckDBManager) -> None:
 
     st.divider()
     st.caption("수급 데이터")
-    sup_t = st.text_input("수급 티커 (빈칸=전체)", placeholder="005930", key="dm_sup_t")
+    sup_ticker = stock_selector(db, key="dm_sup", label="종목 검색 (빈칸=전체)")
+    if sup_ticker:
+        st.caption(f"선택: `{sup_ticker}`")
     if st.button("수급 증분 업데이트"):
-        tickers = [sup_t.strip()] if sup_t.strip() else None
+        tickers = [sup_ticker] if sup_ticker else None
         with st.spinner("수집 중..."):
             SupplyCollector(db).incremental_update_supply(tickers=tickers)
         st.success("완료.")
