@@ -9,12 +9,13 @@ def render(db: DuckDBManager) -> None:
     with tab_add:
         name  = st.text_input("테마명", placeholder="예: AI 전력 인프라")
         desc  = st.text_area("설명 (선택)", height=80)
+        rating = st.number_input("Rating", min_value=0, max_value=10, value=5)
         active = st.checkbox("활성 테마", value=True)
         if st.button("저장", key="tm_save"):
             if not name.strip():
                 st.warning("테마명을 입력하세요.")
             else:
-                tid = db.upsert_theme(name.strip(), desc.strip(), active)
+                tid = db.upsert_theme(name.strip(), desc.strip(), active, rating)
                 st.success(f"저장 완료 (theme_id={tid})")
 
     with tab_map:
@@ -65,7 +66,7 @@ def render(db: DuckDBManager) -> None:
 
     with tab_list:
         df = db.query(
-            "SELECT theme_id, name, description, is_active, created_at, updated_at "
+            "SELECT theme_id, name, description, rating, is_active, created_at, updated_at "
             "FROM themes ORDER BY theme_id"
         )
         st.dataframe(df, width="stretch", hide_index=True)

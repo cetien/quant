@@ -209,6 +209,11 @@ class PriceCollector:
             self.db.upsert_dataframe(combined, "daily_prices", pk_cols=["ticker", "date"])
             save_prices(combined, category="prices")
             log.info(f"일봉 수집 완료: {len(combined)}행 적재, {skipped}종목 skip")
+
+            # ★ stock_cache 갱신: 수집된 종목만 대상으로 상승률 재계산
+            updated_tickers = combined["ticker"].unique().tolist()
+            self.db.refresh_stock_cache(tickers=updated_tickers)
+
             return len(combined)
         else:
             log.info(f"수집된 데이터 없음. {skipped}종목 모두 최신 상태.")

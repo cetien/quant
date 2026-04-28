@@ -13,7 +13,7 @@ CREATE_SECTORS = """
 CREATE TABLE IF NOT EXISTS sectors (
     id      INTEGER PRIMARY KEY,
     name    TEXT    NOT NULL UNIQUE,
-    rating  INTEGER NOT NULL DEFAULT 0   -- 검색 우선순위 가중치
+    rating  INTEGER NOT NULL DEFAULT 5   -- 검색 우선순위 가중치
 );
 """
 
@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS stocks (
     market          TEXT        NOT NULL CHECK (market IN ('KOSPI', 'KOSDAQ')),
     industry        TEXT,
     listed_date     DATE,
+    rating          INTEGER     NOT NULL DEFAULT 5,
     is_active       BOOLEAN     NOT NULL DEFAULT TRUE,
     updated_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (ticker)
@@ -140,6 +141,7 @@ CREATE TABLE IF NOT EXISTS themes (
     theme_id    INTEGER PRIMARY KEY,
     name        TEXT    NOT NULL UNIQUE,
     description TEXT,
+    rating      INTEGER NOT NULL DEFAULT 5,
     is_active   BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -215,6 +217,38 @@ JOIN sectors sec ON sec.id = ssm.sector_id;
 """
 
 
+# ── 종목 캐시 (상승률 등 사전계산, side panel 고속 표시용) ──────────────────────
+
+CREATE_STOCK_CACHE = """
+CREATE TABLE IF NOT EXISTS stock_cache (
+    ticker      TEXT        NOT NULL REFERENCES stocks(ticker),
+    last_date   DATE        NOT NULL,       -- incremental_update 기준일
+    ret_1m      DOUBLE,                     -- 30일 수익률 (adj_close 기준)
+    ret_3m      DOUBLE,                     -- 90일 수익률
+    ret_6m      DOUBLE,                     -- 180일 수익률
+    per         DOUBLE,                     -- 최신 PER (fundamentals join)
+    pbr         DOUBLE,                     -- 최신 PBR
+    roe         DOUBLE,                     -- 최신 ROE
+    updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (ticker)
+);
+"""
+
+# ── PDF 리포트 테이블 ────────────────────────────────────────────────────────
+
+CREATE_PDF_REPORTS = """
+CREATE TABLE IF NOT EXISTS pdf_reports (
+    id          INTEGER PRIMARY KEY,
+    date        DATE NOT NULL,
+    ticker      TEXT,
+    title       TEXT,
+    writer      TEXT,
+    filepath    TEXT UNIQUE,
+    file_hash   TEXT UNIQUE,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 # ── 전체 DDL 실행 순서 (FK 의존성 순서 준수) ─────────────────────────────────
 
 ALL_SCHEMAS = [
@@ -235,7 +269,11 @@ ALL_SCHEMAS = [
     CREATE_MACRO,
     CREATE_FUNDAMENTALS,
     CREATE_TRADING_CALENDAR,
+    # 캐시 (stocks + daily_prices 이후)
+    CREATE_STOCK_CACHE,
     # 뷰 (모든 테이블 이후)
     CREATE_VIEW_ACTIVE_THEME,
     CREATE_VIEW_STOCK_PRIMARY_SECTOR,
+    # 리포트
+    CREATE_PDF_REPORTS,
 ]

@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 import pandas as pd
 from st_aggrid import AgGrid, GridOptionsBuilder
+from ui.pages.market._old_project_ingestion import ingest, DEFAULT_PDF_DIR, DEFAULT_LOG_PATH
 
 from storage.db_manager import DuckDBManager
 
@@ -24,6 +25,15 @@ def open_pdf(path: str):
 
 def render(db: DuckDBManager) -> None:
     st.subheader("📋 시장 뷰 리포트")
+
+    # 페이지 활성화 시 신규 리포트 자동 인제션 (세션당 1회 실행)
+    if "report_ingested" not in st.session_state:
+        with st.spinner("신규 리포트 파일을 스캔하고 DB를 업데이트 중입니다..."):
+            try:
+                ingest(DEFAULT_PDF_DIR, DEFAULT_LOG_PATH)
+                st.session_state["report_ingested"] = True
+            except Exception as e:
+                st.error(f"리포트 자동 수집 중 오류 발생: {e}")
 
     # 1. DuckDB를 사용하여 리포트와 섹터 정보 조인 쿼리
     # pdf_reports 테이블이 DuckDB 내에 있다고 가정합니다.
@@ -54,14 +64,52 @@ def render(db: DuckDBManager) -> None:
         st.warning("조회된 리포트 데이터가 없습니다.")
         return
 
+    # 날짜 형식을 YYYY-MM-DD 문자열로 변환 (AgGrid 표시 형식 고정)
+    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+
+    # 필터 상태 관리
+    f_col = st.session_state.get("report_filter_col")
+    f_val = st.session_state.get("report_filter_val")
+
     # 2. 상단 요약 통계
     col1, col2 = st.columns(2)
     with col1:
-        st.caption("🏆 종목별 리포트 빈도 Top 5")
-        st.dataframe(df['company'].value_counts().head(5), width="stretch", hide_index=False)
+        st.caption("🏆 종목별 리포트 빈도 Top 5 (클릭 시 필터링)")
+        stock_counts = df['company'].value_counts().head(5).reset_index()
+        stock_counts.columns = ['종목', '리포트수']
+        # on_select를 통해 클릭 감지 (Streamlit 1.35+ 필요)
+        sel_s = st.dataframe(
+            stock_counts, use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row"
+        )
+        if sel_s['selection']['rows']:
+            idx = sel_s['selection']['rows'][0]
+            st.session_state["report_filter_col"] = "company"
+            st.session_state["report_filter_val"] = stock_counts.iloc[idx]['종목']
+            st.rerun()
+
     with col2:
-        st.caption("📂 섹터별 리포트 빈도 Top 5")
-        st.dataframe(df['sector'].value_counts().head(5), width="stretch", hide_index=False)
+        st.caption("📂 섹터별 리포트 빈도 Top 5 (클릭 시 필터링)")
+        sector_counts = df['sector'].value_counts().head(5).reset_index()
+        sector_counts.columns = ['섹터', '리포트수']
+        sel_sec = st.dataframe(
+            sector_counts, use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row"
+        )
+        if sel_sec['selection']['rows']:
+            idx = sel_sec['selection']['rows'][0]
+            st.session_state["report_filter_col"] = "sector"
+            st.session_state["report_filter_val"] = sector_counts.iloc[idx]['섹터']
+            st.rerun()
+
+    # 필터가 적용된 경우 해제 버튼 표시
+    if f_col and f_val:
+        if st.button(f"🔄 전체 보기 (현재 필터: {f_val})", use_container_width=True):
+            st.session_state["report_filter_col"] = None
+            st.session_state["report_filter_val"] = None
+            st.rerun()
+        # 그리드용 데이터 필터링
+        df = df[df[f_col] == f_val]
 
     st.divider()
 
@@ -72,9 +120,12 @@ def render(db: DuckDBManager) -> None:
     gb.configure_column("id", hide=True)
     gb.configure_column("date", headerName="날짜", width=100)
     
-    # '섹터'와 '종목' 컬럼에 그룹화 기능 활성화
-    gb.configure_column("sector", headerName="섹터", width=150, enableRowGroup=True)
-    gb.configure_column("company", headerName="종목", width=120, rowGroup=True, enableRowGroup=True)
+    # 필터링 대상에 따라 그룹화 우선순위 변경
+    is_sector_mode = (f_col == "sector")
+    gb.configure_column("sector", headerName="섹터", width=150, 
+                        rowGroup=is_sector_mode, enableRowGroup=True)
+    gb.configure_column("company", headerName="종목", width=120, 
+                        rowGroup=not is_sector_mode, enableRowGroup=True)
     
     gb.configure_column("title", headerName="리포트 제목", flex=1)
     gb.configure_selection("single")
@@ -111,9 +162,27 @@ def render(db: DuckDBManager) -> None:
         selected_row = selected.iloc[0] if isinstance(selected, pd.DataFrame) else selected[0]
         report_id = selected_row["id"]
 
-        try:
-            target_path = df[df["id"] == int(report_id)]["filepath"].iloc[0]
-            if st.button(f"📄 리포트 열기: {selected_row['title']}"):
+        # 새로운 리포트가 선택되었을 때만 자동 실행 (무한 루프 방지)
+        if st.session_state.get("last_opened_report_id") != report_id:
+            st.session_state["last_opened_report_id"] = report_id
+            try:
+                target_path = df[df["id"] == report_id]["filepath"].iloc[0]
                 open_pdf(target_path)
-        except (IndexError, KeyError):
-            st.error(f"리포트(ID: {report_id})의 경로를 찾을 수 없습니다.")
+                st.toast(f"리포트 실행: {selected_row['title']}")
+            except (IndexError, KeyError):
+                st.error(f"리포트(ID: {report_id})의 경로를 찾을 수 없습니다.")
+
+        # 5. 리포트 삭제 기능 (파일 시스템 및 DB에서 물리적 삭제)
+        if st.button(f"🗑️ 리포트 삭제: {selected_row['title']}", type="secondary", use_container_width=True):
+            try:
+                target_path = Path(df[df["id"] == report_id]["filepath"].iloc[0])
+                # 1) 실제 파일 삭제
+                if target_path.exists():
+                    target_path.unlink()
+                # 2) DB 레코드 삭제
+                db.execute("DELETE FROM pdf_reports WHERE id = ?", [int(report_id)])
+                # 3) 상태 초기화 및 새로고침
+                st.session_state.pop("last_opened_report_id", None)
+                st.rerun()
+            except Exception as e:
+                st.error(f"삭제 중 오류 발생: {e}")

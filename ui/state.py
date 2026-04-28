@@ -10,17 +10,25 @@ import streamlit as st
 
 _DEFAULTS: dict = {
     # 네비게이션
-    "active_tab":       "시장 개요",   # 상단 탭 현재 위치
+    "active_tab":           "시장 개요",   # 상단 탭 현재 위치
     # 워치리스트
-    "watchlist":        [],            # List[ticker]
+    "watchlist":            [],            # List[ticker]
     # 종목 분석 컨텍스트
-    "selected_ticker":  None,          # 사이드바에서 선택된 종목
-    "stock_period":     "1Y",
+    "selected_ticker":      None,          # 사이드바에서 선택된 종목
+    "stock_period":         "1Y",
     # 스크리너 마지막 결과 (탭 이동 후 복귀 시 유지)
-    "screener_result":  None,
+    "screener_result":      None,
     # DB 상태 캐시 (사이드바 위젯용)
-    "db_status":        None,
-    "db_status_ts":     None,          # 마지막 조회 timestamp
+    "db_status":            None,
+    "db_status_ts":         None,          # 마지막 조회 timestamp
+    # side panel — gridGroup
+    "selected_group_id":    None,          # 선택된 group_id (str)
+    "edit_group_id":        None,          # 편집 대상 group_id
+    "edit_group_type":      None,          # 'sector' | 'theme'
+    # side panel — price update 트리거
+    "trigger_price_update": None,          # ticker str; chart.py에서 감지 후 None으로 리셋
+    # 매크로 지표 선택 (Global Index gridStock)
+    "selected_macro":       None,          # indicator_code str; 설정 시 selected_ticker는 무시
 }
 
 

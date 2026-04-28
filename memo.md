@@ -22,3 +22,10 @@ git push origin main
 
 # run
 streamlit run ui/app.py
+
+# 향후 컬럼 추가 방법
+> migrate()의 migrations 리스트에 튜플 1개 추가하면 됩니다:
+> python("stocks", "memo", "ALTER TABLE stocks ADD COLUMN memo TEXT"),
+
+
+# LocalState "variations_country":"us"

@@ -20,7 +20,6 @@ from storage.db_manager import DuckDBManager
 """
 
 DEFAULT_PDF_DIR = ROOT_DIR / "data" / "pdf"
-DEFAULT_DB_PATH = ROOT_DIR / "db" / "reports.db"
 DEFAULT_LOG_PATH = ROOT_DIR / "data" / "ingestion.log"
 
 
@@ -132,7 +131,7 @@ def is_duplicate(db: DuckDBManager, parsed: ParsedFilename) -> bool:
         SELECT 1 FROM pdf_reports
         WHERE filepath=? OR file_hash=?
         """,
-        (parsed.filepath, parsed.file_hash),
+        [parsed.filepath, parsed.file_hash],
     )
     return not res.empty
 
@@ -154,7 +153,7 @@ def insert_report(db: DuckDBManager, parsed: ParsedFilename):
         )
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (
+        [
             new_id,
             parsed.date,
             parsed.ticker,
@@ -162,7 +161,7 @@ def insert_report(db: DuckDBManager, parsed: ParsedFilename):
             parsed.writer,
             parsed.filepath,
             parsed.file_hash,
-        ),
+        ],
     )
 
 
@@ -181,8 +180,6 @@ def ingest(pdf_dir: Path, log_path: Path):
     failed = 0
 
     with DuckDBManager() as db:
-        ensure_schema(db)
-        
         for file in sorted(pdf_dir.glob("*.pdf")):
             try:
                 parsed = parse_filename(file, db)
