@@ -25,7 +25,7 @@ class IngestionConfig:
     retry_backoff: float     = 2.0  # exponential backoff 배수
 
     # 수집 기본 설정
-    default_start_date: str = "2015-01-01"
+    default_start_date: str = "2025-01-01"
     markets: List[str]      = field(default_factory=lambda: ["KOSPI", "KOSDAQ"])
 
     # 글로벌 매크로 티커 (yfinance)

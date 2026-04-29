@@ -35,7 +35,7 @@ def render(db: DuckDBManager) -> None:
     fig.update_layout(barmode="group", height=360,
                       margin=dict(l=0, r=0, t=20, b=0),
                       legend=dict(orientation="h", y=1.08))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # 누적 수급
     df["inst_cum"]    = df["inst_net_buy"].cumsum()
@@ -48,4 +48,4 @@ def render(db: DuckDBManager) -> None:
     fig2.update_layout(height=280, margin=dict(l=0, r=0, t=20, b=0),
                        legend=dict(orientation="h", y=1.08))
     st.caption("누적 순매수")
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width="stretch")

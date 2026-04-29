@@ -37,7 +37,7 @@ def render(db: DuckDBManager) -> None:
 
     with c1:
         st.caption("① 종목 목록")
-        if st.button("종목 마스터 업데이트", use_container_width=True):
+        if st.button("종목 마스터 업데이트", width="stretch"):
             try:
                 with st.spinner("수집 중..."):
                     count = PriceCollector(db).update_stock_master()
@@ -50,7 +50,7 @@ def render(db: DuckDBManager) -> None:
 
     with c2:
         st.caption("② 매크로 지표")
-        if st.button("매크로 증분 업데이트", use_container_width=True):
+        if st.button("매크로 증분 업데이트", width="stretch"):
             try:
                 with st.spinner("수집 중..."):
                     MacroCollector(db).incremental_update_macro()
@@ -63,7 +63,7 @@ def render(db: DuckDBManager) -> None:
         price_ticker = stock_selector(db, key="dm_price", label="종목 검색 (빈칸=전체)")
         if price_ticker:
             st.caption(f"선택: `{price_ticker}`")
-        if st.button("일봉 증분 업데이트", use_container_width=True):
+        if st.button("일봉 증분 업데이트", width="stretch"):
             tickers = [price_ticker] if price_ticker else None
             try:
                 with st.spinner("수집 중..."):

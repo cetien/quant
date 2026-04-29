@@ -131,7 +131,23 @@ class PriceCollector:
             log.error(f"pykrx 수집 실패 [{ticker}]: {e}")
             return pd.DataFrame()
 
-    # ── ticker별 last_date 사전 로드 ──────────────────────────────────────────
+    # ── ticker별 first_date / last_date 사전 로드 ────────────────────────────
+
+    def _load_ticker_first_dates(self) -> dict:
+        """
+        daily_prices 테이블에서 ticker별 최초 날짜를 1회 쿼리로 로드.
+        반환: {ticker: "YYYY-MM-DD"} — 수집 이력 없는 종목은 포함되지 않음.
+        """
+        try:
+            df = self.db.query(
+                "SELECT ticker, MIN(date)::VARCHAR AS first_date FROM daily_prices GROUP BY ticker"
+            )
+            if df.empty:
+                return {}
+            return dict(zip(df["ticker"], df["first_date"]))
+        except Exception as e:
+            log.warning(f"_load_ticker_first_dates 실패: {e}")
+            return {}
 
     def _load_ticker_last_dates(self) -> dict:
         """
@@ -148,6 +164,73 @@ class PriceCollector:
         except Exception as e:
             log.warning(f"_load_ticker_last_dates 실패 (전체 신규 수집으로 진행): {e}")
             return {}
+
+    # ── 과거 데이터 소급 수집 (backward) ─────────────────────────────────────
+
+    def backfill_daily_prices(
+        self,
+        tickers: Optional[List[str]] = None,
+        start: Optional[str] = None,
+    ) -> int:
+        """
+        ticker별 first_date 이전 구간을 소급 수집 (backward fill).
+
+        - start: 소급 시작일. 미지정 시 cfg.ingestion.default_start_date 사용.
+        - 수집 이력 없는 종목은 default_start_date ~ 오늘 전체 수집.
+        - 이미 first_date가 start 이전인 종목은 skip.
+        """
+        if tickers is None:
+            df_stocks = self.db.query("SELECT ticker FROM stocks WHERE is_active = TRUE")
+            tickers = df_stocks["ticker"].tolist()
+
+        start = start or cfg.ingestion.default_start_date
+
+        ticker_first_dates = self._load_ticker_first_dates()
+
+        log.info(f"일봉 소급 수집 시작: {len(tickers)}개 종목, start={start}")
+        all_rows = []
+        skipped = 0
+
+        for i, ticker in enumerate(tickers):
+            first_date = ticker_first_dates.get(ticker)
+            if first_date:
+                if first_date <= start:
+                    log.debug(f"[{ticker}] 이미 {first_date}까지 수집됨. skip.")
+                    skipped += 1
+                    continue
+                # first_date 이전 구간만 수집
+                end_for_ticker = (
+                    pd.Timestamp(first_date) - timedelta(days=1)
+                ).strftime("%Y-%m-%d")
+            else:
+                # 수집 이력 없음 → 전체 구간
+                end_for_ticker = date.today().strftime("%Y-%m-%d")
+
+            if start > end_for_ticker:
+                skipped += 1
+                continue
+
+            df = self.fetch_daily_ohlcv_pykrx(ticker, start, end_for_ticker)
+            if not df.empty:
+                all_rows.append(df)
+                log.debug(f"[{ticker}] {len(df)}행 소급 수집 ({start} ~ {end_for_ticker})")
+
+            time.sleep(cfg.ingestion.pykrx_delay_sec)
+
+            if (i + 1) % 100 == 0:
+                log.info(f"  진행: {i+1}/{len(tickers)} (수집중={len(all_rows)}건 누적, skip={skipped})")
+
+        if all_rows:
+            combined = pd.concat(all_rows, ignore_index=True)
+            self.db.upsert_dataframe(combined, "daily_prices", pk_cols=["ticker", "date"])
+            save_prices(combined, category="prices")
+            log.info(f"일봉 소급 수집 완료: {len(combined)}행 적재, {skipped}종목 skip")
+            updated_tickers = combined["ticker"].unique().tolist()
+            self.db.refresh_stock_cache(tickers=updated_tickers)
+            return len(combined)
+        else:
+            log.info(f"소급 수집 데이터 없음. {skipped}종목 모두 skip.")
+            return 0
 
     # ── 증분 업데이트 ─────────────────────────────────────────────────────────
 

@@ -48,6 +48,6 @@ def render(db: DuckDBManager) -> None:
     fig.update_layout(barmode="group", height=320,
                       margin=dict(l=0, r=0, t=20, b=0),
                       legend=dict(orientation="h", y=1.08))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)

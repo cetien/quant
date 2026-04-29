@@ -160,13 +160,13 @@ def render():
                 f"FROM v_active_theme_map WHERE theme_id = {sel_theme_id} "
                 f"ORDER BY weight DESC"
             )
-            st.dataframe(mapped, use_container_width=True, hide_index=True)
+            st.dataframe(mapped, width="stretch", hide_index=True)
 
     with tab_list:
         all_themes = db.query(
             "SELECT theme_id, name, description, is_active, created_at, updated_at "
             "FROM themes ORDER BY theme_id"
         )
-        st.dataframe(all_themes, use_container_width=True, hide_index=True)
+        st.dataframe(all_themes, width="stretch", hide_index=True)
 
     db.close()

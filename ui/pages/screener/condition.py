@@ -13,7 +13,7 @@ def render(db: DuckDBManager) -> None:
 
     c1, c2 = st.columns([1, 1])
     ma_align = c1.checkbox("이동평균 정배열 (5>20>60>120일)")
-    run = c2.button("🔍 검색 실행", type="primary", use_container_width=True)
+    run = c2.button("🔍 검색 실행", type="primary", width="stretch")
 
     if not run:
         prev = state.get("screener_result")

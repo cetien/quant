@@ -59,4 +59,4 @@ def render(db: DuckDBManager) -> None:
                                  name=code, mode="lines"), row=idx, col=1)
     fig.update_layout(height=200 * len(selected), showlegend=False,
                       margin=dict(l=0, r=0, t=30, b=0))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

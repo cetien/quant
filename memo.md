@@ -8,7 +8,7 @@ git add .
 
 # 3. 로컬 저장소에 커밋 (기록 생성)
 # -m 뒤에는 변경 내용을 요약한 메시지를 작성합니다.
-git commit -m "feat: 가격 수집 로직 내 거래정지 종목 필터링 추가"
+git commit -m "feat: X"
 
 # 4. GitHub(원격 저장소)로 코드 전송
 # 보통 기본 브랜치 명은 'main' 또는 'master'입니다.

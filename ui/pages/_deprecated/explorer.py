@@ -26,7 +26,7 @@ def render():
         limit = st.number_input("표시할 행 수", min_value=10, max_value=5000, value=100)
         
         df = db.query(f"SELECT * FROM {selected_table} LIMIT {limit}")
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
         
         # 간단한 SQL 쿼리 실행기
         query = st.text_area("SQL 쿼리 직접 실행", f"SELECT * FROM {selected_table} LIMIT 10")

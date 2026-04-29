@@ -72,7 +72,7 @@ def render():
     ), row=2, col=1)
 
     fig.update_layout(xaxis_rangeslider_visible=False, height=600)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # ── 매크로 상관계수 ───────────────────────────────────────────────────────
     st.subheader("매크로 상관계수 (60일 수익률 기준)")
@@ -101,6 +101,6 @@ def render():
         if corr_results:
             corr_df = pd.DataFrame(corr_results).sort_values("상관계수", key=abs, ascending=False)
             st.bar_chart(corr_df.set_index("지표")["상관계수"])
-            st.dataframe(corr_df, use_container_width=True)
+            st.dataframe(corr_df, width="stretch")
 
     db.close()

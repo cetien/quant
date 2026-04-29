@@ -33,10 +33,10 @@ def render(db: DuckDBManager) -> None:
         if sector_info.empty:
             st.caption("섹터 미등록")
         else:
-            st.dataframe(sector_info, use_container_width=True, hide_index=True)
+            st.dataframe(sector_info, width="stretch", hide_index=True)
     with c2:
         st.markdown("**소속 테마**")
         if theme_info.empty:
             st.caption("테마 미등록")
         else:
-            st.dataframe(theme_info, use_container_width=True, hide_index=True)
+            st.dataframe(theme_info, width="stretch", hide_index=True)

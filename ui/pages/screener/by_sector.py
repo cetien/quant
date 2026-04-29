@@ -51,6 +51,6 @@ def render(db: DuckDBManager) -> None:
         return
 
     st.success(f"{len(df)}개 종목")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
     st.download_button("📥 CSV", df.to_csv(index=False, encoding="utf-8-sig"),
                        f"sector_{sel}.csv", "text/csv")

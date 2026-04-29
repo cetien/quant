@@ -82,7 +82,7 @@ def _run_screen(db, min_amount, markets, ma_align, rs_min, top_n):
     display_cols = [c for c in display_cols if c in result.columns]
 
     st.success(f"검색 완료: {len(result)}개 종목")
-    st.dataframe(result[display_cols], use_container_width=True, height=600)
+    st.dataframe(result[display_cols], width="stretch", height=600)
 
     # CSV 다운로드
     csv = result.to_csv(index=False, encoding="utf-8-sig")

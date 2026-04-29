@@ -97,7 +97,7 @@ def handle_report_selection(db: DuckDBManager, df: pd.DataFrame, selected_rows):
 
         # 삭제 버튼
         if st.button(f"🗑️ 리포트 삭제: {selected_row['title']}", type="secondary",
-                     use_container_width=True):
+                     width="stretch"):
             try:
                 target_path_row = df[df["id"] == report_id]
                 if not target_path_row.empty:
@@ -189,7 +189,7 @@ def render(db: DuckDBManager) -> None:
             label = f"{row['종목']}  ({row['리포트수']}건)"
             is_active = (f_col == "company" and f_val == row["종목"])
             btn_type = "primary" if is_active else "secondary"
-            if st.button(label, key=f"stk_top_{row['종목']}", use_container_width=True,
+            if st.button(label, key=f"stk_top_{row['종목']}", width="stretch",
                          type=btn_type):
                 if is_active:
                     # 이미 선택된 종목 재클릭 → 필터 해제
@@ -209,7 +209,7 @@ def render(db: DuckDBManager) -> None:
             label = f"{row['섹터']}  ({row['리포트수']}건)"
             is_active = (f_col == "sector" and f_val == row["섹터"])
             btn_type = "primary" if is_active else "secondary"
-            if st.button(label, key=f"sec_top_{row['섹터']}", use_container_width=True,
+            if st.button(label, key=f"sec_top_{row['섹터']}", width="stretch",
                          type=btn_type):
                 if is_active:
                     st.session_state["report_filter_col"] = None
@@ -222,7 +222,7 @@ def render(db: DuckDBManager) -> None:
     # 필터 해제 버튼 (상단 버튼 재클릭으로도 해제 가능하나 명시적으로도 제공)
     if f_col and f_val:
         st.info(f"필터 적용 중: **{f_val}**")
-        if st.button("🔄 전체 보기", use_container_width=True):
+        if st.button("🔄 전체 보기", width="stretch"):
             st.session_state["report_filter_col"] = None
             st.session_state["report_filter_val"] = None
             st.rerun()
